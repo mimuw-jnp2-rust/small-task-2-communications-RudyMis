@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, os::unix::prelude::JoinHandleExt};
 
 type CommsResult<T> = Result<T, CommsError>;
 
@@ -21,7 +21,11 @@ enum MessageType {
 
 impl MessageType {
     fn header(&self) -> &'static str {
-        todo!()
+        match self {
+            MessageType::Handshake => "Handshake",
+            MessageType::Post => "Post",
+            MessageType::GetCount => "GetCount",
+        }
     }
 }
 
@@ -69,7 +73,19 @@ impl Client {
     // Method should return an error when a connection already exists.
     // The client should send a handshake to the server.
     fn open(&mut self, addr: &str, server: Server) -> CommsResult<()> {
-        todo!()
+        if self.connections.contains_key(addr) {
+            return Err(CommsError::ConnectionExists(addr.to_string()));
+        }
+        self.connections
+            .insert(addr.to_string(), Connection::Open(server));
+        self.send(
+            addr,
+            Message {
+                msg_type: MessageType::Handshake,
+                load: String::new(),
+            },
+        )?;
+        Ok(())
     }
 
     // Sends the provided message to the server at the given `addr`.
@@ -78,7 +94,15 @@ impl Client {
     // should be closed.
     fn send(&mut self, addr: &str, msg: Message) -> CommsResult<Response> {
         // server.receive(msg)
-        todo!()
+        match self.connections.get_mut(addr) {
+            None => Err(CommsError::ConnectionNotFound(String::from(addr))),
+            Some(conn) => match conn {
+                Connection::Closed => Err(CommsError::ConnectionClosed(String::from(addr))),
+                Connection::Open(server) => match server.receive(msg) {
+                    OK(()) => Ok(()),
+                },
+            },
+        }
     }
 
     // Returns whether the connection to `addr` exists and has
@@ -101,7 +125,6 @@ enum Response {
     PostReceived,
     GetCount(u32),
 }
-
 
 #[derive(Clone)]
 struct Server {
